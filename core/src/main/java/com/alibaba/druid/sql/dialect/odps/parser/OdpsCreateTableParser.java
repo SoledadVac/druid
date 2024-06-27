@@ -79,7 +79,7 @@ public class OdpsCreateTableParser extends SQLCreateTableParser {
 
             if (lexer.identifierEquals(FnvHash.Constants.LIFECYCLE)) {
                 lexer.nextToken();
-                stmt.setLifecycle(this.exprParser.expr());
+                stmt.setLifeCycle(this.exprParser.expr());
 
                 continue;
             }
@@ -210,7 +210,7 @@ public class OdpsCreateTableParser extends SQLCreateTableParser {
                         throw new ParserException("expect identifier. " + lexer.info());
                 }
 
-                stmt.getTableElementList().add(column);
+                stmt.addColumn(column);
 
                 if (lexer.isKeepComments() && lexer.hasComment()) {
                     column.addAfterComment(lexer.readAndResetComments());
@@ -254,6 +254,7 @@ public class OdpsCreateTableParser extends SQLCreateTableParser {
                         case TABLE:
                         case PARTITION:
                         case SEQUENCE:
+                        case VARIANT:
                             break;
                         default:
                             throw new ParserException("expect identifier. " + lexer.info());
@@ -384,7 +385,7 @@ public class OdpsCreateTableParser extends SQLCreateTableParser {
 
             if (lexer.identifierEquals(FnvHash.Constants.LIFECYCLE)) {
                 lexer.nextToken();
-                stmt.setLifecycle(this.exprParser.expr());
+                stmt.setLifeCycle(this.exprParser.expr());
                 continue;
             }
 
@@ -417,7 +418,7 @@ public class OdpsCreateTableParser extends SQLCreateTableParser {
 
             if (lexer.identifierEquals(FnvHash.Constants.LIFECYCLE)) {
                 lexer.nextToken();
-                stmt.setLifecycle(this.exprParser.expr());
+                stmt.setLifeCycle(this.exprParser.expr());
                 continue;
             }
 
@@ -456,7 +457,7 @@ public class OdpsCreateTableParser extends SQLCreateTableParser {
 
             if (lexer.identifierEquals(FnvHash.Constants.LIFECYCLE)) {
                 lexer.nextToken();
-                stmt.setLifecycle(this.exprParser.expr());
+                stmt.setLifeCycle(this.exprParser.expr());
                 continue;
             }
 

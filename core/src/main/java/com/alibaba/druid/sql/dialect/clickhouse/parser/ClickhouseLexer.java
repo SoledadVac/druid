@@ -29,6 +29,8 @@ public class ClickhouseLexer extends Lexer {
         map.put("SHOW", Token.SHOW);
         map.put("ALL", Token.ALL);
         map.put("GLOBAL", Token.GLOBAL);
+        map.put("PARTITION", Token.PARTITION);
+        map.put("ILIKE", Token.ILIKE);
 
         DEFAULT_KEYWORDS = new Keywords(map);
     }

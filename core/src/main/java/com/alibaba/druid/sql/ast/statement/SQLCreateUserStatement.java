@@ -20,10 +20,11 @@ import com.alibaba.druid.sql.ast.SQLName;
 import com.alibaba.druid.sql.ast.SQLStatementImpl;
 import com.alibaba.druid.sql.visitor.SQLASTVisitor;
 
-public class SQLCreateUserStatement extends SQLStatementImpl {
+public class SQLCreateUserStatement extends SQLStatementImpl implements SQLCreateStatement {
     private SQLName user;
     private SQLExpr password;
-
+    private boolean postgresqlWith;
+    private boolean postgresqlEncrypted;
     // oracle
     private SQLName defaultTableSpace;
 
@@ -39,6 +40,22 @@ public class SQLCreateUserStatement extends SQLStatementImpl {
             user.setParent(this);
         }
         this.user = user;
+    }
+
+    public boolean isPostgresqlWith() {
+        return postgresqlWith;
+    }
+
+    public void setPostgresqlWith(boolean postgresqlWith) {
+        this.postgresqlWith = postgresqlWith;
+    }
+
+    public boolean isPostgresqlEncrypted() {
+        return postgresqlEncrypted;
+    }
+
+    public void setPostgresqlEncrypted(boolean postgresqlEncrypted) {
+        this.postgresqlEncrypted = postgresqlEncrypted;
     }
 
     public SQLExpr getPassword() {
@@ -59,5 +76,10 @@ public class SQLCreateUserStatement extends SQLStatementImpl {
             acceptChild(visitor, password);
         }
         visitor.endVisit(this);
+    }
+
+    @Override
+    public DDLObjectType getDDLObjectType() {
+        return DDLObjectType.USER;
     }
 }

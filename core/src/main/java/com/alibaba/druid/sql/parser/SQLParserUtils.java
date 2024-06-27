@@ -23,8 +23,9 @@ import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.ast.statement.SQLInsertStatement;
 import com.alibaba.druid.sql.ast.statement.SQLSelectQueryBlock;
 import com.alibaba.druid.sql.dialect.ads.parser.AdsStatementParser;
-import com.alibaba.druid.sql.dialect.antspark.parser.AntsparkLexer;
-import com.alibaba.druid.sql.dialect.antspark.parser.AntsparkStatementParser;
+import com.alibaba.druid.sql.dialect.bigquery.parser.BigQueryExprParser;
+import com.alibaba.druid.sql.dialect.bigquery.parser.BigQueryLexer;
+import com.alibaba.druid.sql.dialect.bigquery.parser.BigQueryStatementParser;
 import com.alibaba.druid.sql.dialect.blink.parser.BlinkStatementParser;
 import com.alibaba.druid.sql.dialect.clickhouse.parser.ClickhouseExprParser;
 import com.alibaba.druid.sql.dialect.clickhouse.parser.ClickhouseLexer;
@@ -37,6 +38,7 @@ import com.alibaba.druid.sql.dialect.h2.parser.H2ExprParser;
 import com.alibaba.druid.sql.dialect.h2.parser.H2Lexer;
 import com.alibaba.druid.sql.dialect.h2.parser.H2StatementParser;
 import com.alibaba.druid.sql.dialect.hive.parser.HiveExprParser;
+import com.alibaba.druid.sql.dialect.hive.parser.HiveLexer;
 import com.alibaba.druid.sql.dialect.hive.parser.HiveStatementParser;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
 import com.alibaba.druid.sql.dialect.mysql.parser.MySqlExprParser;
@@ -63,9 +65,14 @@ import com.alibaba.druid.sql.dialect.postgresql.parser.PGSQLStatementParser;
 import com.alibaba.druid.sql.dialect.presto.parser.PrestoExprParser;
 import com.alibaba.druid.sql.dialect.presto.parser.PrestoLexer;
 import com.alibaba.druid.sql.dialect.presto.parser.PrestoStatementParser;
+import com.alibaba.druid.sql.dialect.spark.parser.SparkLexer;
+import com.alibaba.druid.sql.dialect.spark.parser.SparkStatementParser;
 import com.alibaba.druid.sql.dialect.sqlserver.ast.SQLServerSelectQueryBlock;
 import com.alibaba.druid.sql.dialect.sqlserver.parser.SQLServerExprParser;
 import com.alibaba.druid.sql.dialect.sqlserver.parser.SQLServerStatementParser;
+import com.alibaba.druid.sql.dialect.starrocks.parser.StarRocksExprParser;
+import com.alibaba.druid.sql.dialect.starrocks.parser.StarRocksLexer;
+import com.alibaba.druid.sql.dialect.starrocks.parser.StarRocksStatementParser;
 import com.alibaba.druid.sql.visitor.SQLASTOutputVisitor;
 import com.alibaba.druid.sql.visitor.VisitorFeature;
 import com.alibaba.druid.util.StringUtils;
@@ -99,6 +106,11 @@ public class SQLParserUtils {
     }
 
     public static SQLStatementParser createSQLStatementParser(String sql, DbType dbType, SQLParserFeature... features) {
+        if (sql.indexOf("\r\n") != -1) {
+            // com.alibaba.druid.sql.parser.Lexer only recognizes Linux newline '\n'.
+            sql = sql.replace("\r\n", "\n");
+        }
+
         if (dbType == null) {
             dbType = DbType.other;
         }
@@ -108,7 +120,10 @@ public class SQLParserUtils {
             case oceanbase_oracle:
                 return new OracleStatementParser(sql, features);
             case mysql:
+            case tidb:
             case mariadb:
+            case goldendb:
+            case oceanbase:
             case drds: {
                 return new MySqlStatementParser(sql, features);
             }
@@ -119,11 +134,13 @@ public class SQLParserUtils {
                 return parser;
             }
             case postgresql:
+            case greenplum:
             case edb:
+            case gaussdb:
                 return new PGSQLStatementParser(sql, features);
             case sqlserver:
             case jtds:
-                return new SQLServerStatementParser(sql);
+                return new SQLServerStatementParser(sql, features);
             case h2:
                 return new H2StatementParser(sql, features);
             case blink:
@@ -138,13 +155,17 @@ public class SQLParserUtils {
                 return new HiveStatementParser(sql, features);
             case presto:
             case trino:
-                return new PrestoStatementParser(sql);
+                return new PrestoStatementParser(sql, features);
+            case bigquery:
+                return new BigQueryStatementParser(sql, features);
             case ads:
                 return new AdsStatementParser(sql);
-            case antspark:
-                return new AntsparkStatementParser(sql);
+            case spark:
+                return new SparkStatementParser(sql);
             case clickhouse:
                 return new ClickhouseStatementParser(sql);
+            case starrocks:
+                return new StarRocksStatementParser(sql);
             default:
                 return new SQLStatementParser(sql, dbType);
         }
@@ -169,7 +190,10 @@ public class SQLParserUtils {
             case h2:
                 return new H2ExprParser(sql, features);
             case postgresql:
+            case greenplum:
             case edb:
+            case gaussdb:
+            case hologres:
                 return new PGExprParser(sql, features);
             case sqlserver:
             case jtds:
@@ -185,10 +209,14 @@ public class SQLParserUtils {
                 return new PrestoExprParser(sql, features);
             case hive:
                 return new HiveExprParser(sql, features);
+            case bigquery:
+                return new BigQueryExprParser(sql, features);
             case clickhouse:
                 return new ClickhouseExprParser(sql, features);
             case oscar:
                 return new OscarExprParser(sql, features);
+            case starrocks:
+                return new StarRocksExprParser(sql, features);
             default:
                 return new SQLExprParser(sql, dbType, features);
         }
@@ -205,37 +233,50 @@ public class SQLParserUtils {
 
         switch (dbType) {
             case oracle:
-                return new OracleLexer(sql);
+                return new OracleLexer(sql, features);
             case mysql:
             case mariadb:
-                return new MySqlLexer(sql);
+                return new MySqlLexer(sql, features);
             case elastic_search: {
-                MySqlLexer lexer = new MySqlLexer(sql);
+                MySqlLexer lexer = new MySqlLexer(sql, features);
                 lexer.dbType = dbType;
                 return lexer;
             }
             case h2:
-                return new H2Lexer(sql);
+                return new H2Lexer(sql, features);
             case postgresql:
+            case greenplum:
             case edb:
-                return new PGLexer(sql);
+            case hologres:
+                return new PGLexer(sql, features);
             case db2:
-                return new DB2Lexer(sql);
+                return new DB2Lexer(sql, features);
             case odps:
-                return new OdpsLexer(sql);
+                return new OdpsLexer(sql, features);
             case phoenix:
-                return new PhoenixLexer(sql);
+                return new PhoenixLexer(sql, features);
             case presto:
             case trino:
-                return new PrestoLexer(sql);
-            case antspark:
-                return new AntsparkLexer(sql);
+                return new PrestoLexer(sql, features);
+            case spark:
+                return new SparkLexer(sql);
             case oscar:
-                return new OscarLexer(sql);
+                return new OscarLexer(sql, features);
             case clickhouse:
-                return new ClickhouseLexer(sql);
-            default:
-                return new Lexer(sql, null, dbType);
+                return new ClickhouseLexer(sql, features);
+            case starrocks:
+                return new StarRocksLexer(sql, features);
+            case hive:
+                return new HiveLexer(sql, features);
+            case bigquery:
+                return new BigQueryLexer(sql, features);
+            default: {
+                Lexer lexer = new Lexer(sql, null, dbType);
+                for (SQLParserFeature feature : features) {
+                    lexer.config(feature, true);
+                }
+                return lexer;
+            }
         }
     }
 
@@ -252,6 +293,9 @@ public class SQLParserUtils {
             case db2:
                 return new DB2SelectQueryBlock();
             case postgresql:
+            case greenplum:
+            case edb:
+            case hologres:
                 return new PGSelectQueryBlock();
             case odps:
                 return new OdpsSelectQueryBlock();
@@ -475,7 +519,7 @@ public class SQLParserUtils {
             return sql;
         }
         SQLStatementParser parser = createSQLStatementParser(sql, dbType);
-        StringBuffer buf = new StringBuffer(sql.length() + 20);
+        StringBuilder buf = new StringBuilder(sql.length() + 20);
         SQLASTOutputVisitor out = SQLUtils.createOutputVisitor(buf, DbType.mysql);
         out.config(VisitorFeature.OutputNameQuote, true);
 
@@ -498,6 +542,115 @@ public class SQLParserUtils {
         }
 
         return buf.toString();
+    }
+
+    public static List<String> split(String sql, DbType dbType) {
+        if (dbType == null) {
+            dbType = DbType.other;
+        }
+
+        {
+            Lexer lexer = createLexer(sql, dbType);
+            lexer.nextToken();
+
+            boolean script = false;
+            if (dbType == DbType.odps && lexer.token == Token.VARIANT) {
+                script = true;
+            }
+
+            if (script) {
+                return Collections.singletonList(sql);
+            }
+        }
+
+        List list = new ArrayList();
+
+        Lexer lexer = createLexer(sql, dbType);
+        lexer.config(SQLParserFeature.SkipComments, false);
+        lexer.config(SQLParserFeature.KeepComments, true);
+
+        boolean set = false, paiOrJar = false;
+        int start = 0;
+        Token token = lexer.token;
+        for (; lexer.token != Token.EOF; ) {
+            if (token == Token.SEMI) {
+                int len = lexer.startPos - start;
+                if (len > 0) {
+                    String lineSql = sql.substring(start, lexer.startPos);
+                    lineSql = lineSql.trim();
+                    if (!lineSql.isEmpty()) {
+                        list.add(lineSql);
+                    }
+                }
+                start = lexer.startPos + 1;
+                set = false;
+            } else if (token == Token.CREATE) {
+                lexer.nextToken();
+
+                if (lexer.token == Token.FUNCTION || lexer.identifierEquals("FUNCTION")) {
+                    lexer.nextToken();
+                    lexer.nextToken();
+                    if (lexer.token == Token.AS) {
+                        lexer.nextToken();
+                        if (lexer.token == Token.LITERAL_CHARS) {
+                            lexer.nextToken();
+                            token = lexer.token;
+                            continue;
+                        }
+                    }
+                    lexer.startPos = sql.length();
+                    break;
+                }
+
+                token = lexer.token;
+                continue;
+            } else if (set && token == Token.EQ && dbType == DbType.odps) {
+                lexer.nextTokenForSet();
+                token = lexer.token;
+                continue;
+            }
+
+            if (lexer.identifierEquals("USING")) {
+                lexer.nextToken();
+                if (lexer.identifierEquals("jar")) {
+                    lexer.nextToken();
+                }
+            }
+
+            if (lexer.token == Token.SET) {
+                set = true;
+            }
+
+            if (lexer.identifierEquals("ADD") && (dbType == DbType.hive || dbType == DbType.odps)) {
+                lexer.nextToken();
+                if (lexer.identifierEquals("JAR")) {
+                    lexer.nextPath();
+                }
+            } else {
+                lexer.nextToken();
+            }
+            token = lexer.token;
+        }
+
+        if (start != sql.length() && token != Token.SEMI) {
+            int end = lexer.startPos;
+            if (end > sql.length()) {
+                end = sql.length();
+            }
+            String splitSql = sql.substring(start, end).trim();
+            if (!paiOrJar) {
+                splitSql = removeComment(splitSql, dbType).trim();
+            } else {
+                if (splitSql.endsWith(";")) {
+                    splitSql = splitSql.substring(0, splitSql.length() - 1).trim();
+                }
+            }
+            if (!splitSql.isEmpty()) {
+                list.add(splitSql);
+            }
+        }
+
+        return list;
     }
 
     public static List<String> splitAndRemoveComment(String sql, DbType dbType) {
@@ -535,7 +688,7 @@ public class SQLParserUtils {
                 script = true;
             }
 
-            if (script || lexer.identifierEquals("pai") || lexer.identifierEquals("jar")) {
+            if (script || lexer.identifierEquals("pai") || lexer.identifierEquals("jar") || lexer.identifierEquals("copy")) {
                 return Collections.singletonList(sql);
             }
         }
@@ -545,11 +698,22 @@ public class SQLParserUtils {
         Lexer lexer = createLexer(sql, dbType);
         lexer.config(SQLParserFeature.SkipComments, false);
         lexer.config(SQLParserFeature.KeepComments, true);
+        lexer.nextToken();
 
         boolean set = false, paiOrJar = false;
         int start = 0;
+        Token preToken = null;
+        int prePos = 0;
         Token token = lexer.token;
-        for (; lexer.token != Token.EOF; ) {
+        Token startToken = lexer.token;
+        while (token == Token.LINE_COMMENT || token == Token.MULTI_LINE_COMMENT) {
+            lexer.nextToken();
+            token = lexer.token;
+            startToken = token;
+            start = lexer.startPos;
+        }
+
+        for (int tokens = 1; lexer.token != Token.EOF; ) {
             if (token == Token.SEMI) {
                 int len = lexer.startPos - start;
                 if (len > 0) {
@@ -562,8 +726,13 @@ public class SQLParserUtils {
                         list.add(splitSql);
                     }
                 }
-                start = lexer.startPos + 1;
+                lexer.nextToken();
+                token = lexer.token;
+                start = lexer.startPos;
+                startToken = token;
                 set = false;
+                tokens = token == Token.LINE_COMMENT || token == Token.MULTI_LINE_COMMENT ? 0 : 1;
+                continue;
             } else if (token == Token.MULTI_LINE_COMMENT) {
                 int len = lexer.startPos - start;
                 if (len > 0) {
@@ -575,11 +744,26 @@ public class SQLParserUtils {
                         list.add(splitSql);
                     }
                 }
-                start = lexer.startPos + 1;
+                lexer.nextToken();
+                token = lexer.token;
+                start = lexer.startPos;
+                startToken = token;
+                tokens = token == Token.LINE_COMMENT || token == Token.MULTI_LINE_COMMENT ? 0 : 1;
+                continue;
             } else if (token == Token.CREATE) {
                 lexer.nextToken();
 
                 if (lexer.token == Token.FUNCTION || lexer.identifierEquals("FUNCTION")) {
+                    lexer.nextToken();
+                    lexer.nextToken();
+                    if (lexer.token == Token.AS) {
+                        lexer.nextToken();
+                        if (lexer.token == Token.LITERAL_CHARS) {
+                            lexer.nextToken();
+                            token = lexer.token;
+                            continue;
+                        }
+                    }
                     lexer.startPos = sql.length();
                     break;
                 }
@@ -590,14 +774,17 @@ public class SQLParserUtils {
                 lexer.nextTokenForSet();
                 token = lexer.token;
                 continue;
-            } else if (lexer.identifierEquals("pai") || lexer.identifierEquals("jar")) {
-                if (lexer.startPos - start > 0) {
-                    String str = sql.substring(start, lexer.startPos).trim();
-                    if (str.isEmpty()) {
-                        lexer.startPos = sql.length();
-                        paiOrJar = true;
-                        break;
-                    }
+            } else if (dbType == DbType.odps
+                    && (preToken == null || preToken == Token.LINE_COMMENT || preToken == Token.SEMI)
+                    && (lexer.identifierEquals("pai") || lexer.identifierEquals("jar") || lexer.identifierEquals("copy"))) {
+                lexer.scanLineArgument();
+                paiOrJar = true;
+            }
+
+            if (lexer.identifierEquals("USING")) {
+                lexer.nextToken();
+                if (lexer.identifierEquals("jar")) {
+                    lexer.nextToken();
                 }
             }
 
@@ -605,12 +792,34 @@ public class SQLParserUtils {
                 set = true;
             }
 
-            lexer.nextToken();
+            prePos = lexer.pos;
+            if (lexer.identifierEquals("ADD") && (dbType == DbType.hive || dbType == DbType.odps)) {
+                lexer.nextToken();
+                if (lexer.identifierEquals("JAR")) {
+                    lexer.nextPath();
+                }
+            } else {
+                lexer.nextToken();
+            }
+            preToken = token;
             token = lexer.token;
+            if (token == Token.LINE_COMMENT
+                    && tokens == 0) {
+                start = lexer.pos;
+                startToken = token;
+            }
+
+            if (token != Token.LINE_COMMENT && token != Token.MULTI_LINE_COMMENT && token != Token.SEMI) {
+                tokens++;
+            }
         }
 
         if (start != sql.length() && token != Token.SEMI) {
-            String splitSql = sql.substring(start, lexer.startPos).trim();
+            int end = lexer.startPos;
+            if (end > sql.length()) {
+                end = sql.length();
+            }
+            String splitSql = sql.substring(start, end).trim();
             if (!paiOrJar) {
                 splitSql = removeComment(splitSql, dbType).trim();
             } else {
@@ -684,7 +893,11 @@ public class SQLParserUtils {
         }
 
         sql = sql.trim();
-        if (sql.startsWith("jar")) {
+        if (sql.startsWith("jar") || sql.startsWith("JAR")) {
+            return sql;
+        }
+
+        if ((sql.startsWith("pai") || sql.startsWith("PAI")) && sql.indexOf(';') == -1) {
             return sql;
         }
 
@@ -722,6 +935,11 @@ public class SQLParserUtils {
                     sb.append(sql.substring(start, lexer.startPos));
                 }
                 start = lexer.startPos + lexer.stringVal().length();
+                if (lexer.startPos > 1 && lexer.text.charAt(lexer.startPos - 1) == '\n') {
+                    while (start + 1 < lexer.text.length() && lexer.text.charAt(start) == '\n') {
+                        start = start + 1;
+                    }
+                }
             } else if (token == Token.MULTI_LINE_COMMENT) {
                 int len = lexer.startPos - start;
                 if (len > 0) {
@@ -735,9 +953,9 @@ public class SQLParserUtils {
                 if (lexer.identifierEquals("JAR")) {
                     lexer.nextPath();
                 }
+            } else {
+                lexer.nextToken();
             }
-
-            lexer.nextToken();
             token = lexer.token;
         }
 
