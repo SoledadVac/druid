@@ -22,8 +22,8 @@ import com.alibaba.druid.sql.ast.statement.*;
 import com.alibaba.druid.sql.dialect.ads.visitor.AdsOutputVisitor;
 import com.alibaba.druid.sql.dialect.bigquery.visitor.BigQueryOutputVisitor;
 import com.alibaba.druid.sql.dialect.blink.vsitor.BlinkOutputVisitor;
-import com.alibaba.druid.sql.dialect.clickhouse.visitor.ClickSchemaStatVisitor;
-import com.alibaba.druid.sql.dialect.clickhouse.visitor.ClickhouseOutputVisitor;
+import com.alibaba.druid.sql.dialect.clickhouse.visitor.CKOutputVisitor;
+import com.alibaba.druid.sql.dialect.clickhouse.visitor.CKStatVisitor;
 import com.alibaba.druid.sql.dialect.db2.visitor.DB2OutputVisitor;
 import com.alibaba.druid.sql.dialect.db2.visitor.DB2SchemaStatVisitor;
 import com.alibaba.druid.sql.dialect.h2.visitor.H2OutputVisitor;
@@ -34,6 +34,9 @@ import com.alibaba.druid.sql.dialect.hive.stmt.HiveCreateTableStatement;
 import com.alibaba.druid.sql.dialect.hive.visitor.HiveASTVisitorAdapter;
 import com.alibaba.druid.sql.dialect.hive.visitor.HiveOutputVisitor;
 import com.alibaba.druid.sql.dialect.hive.visitor.HiveSchemaStatVisitor;
+import com.alibaba.druid.sql.dialect.holo.visitor.HoloOutputVisitor;
+import com.alibaba.druid.sql.dialect.impala.visitor.ImpalaOutputVisitor;
+import com.alibaba.druid.sql.dialect.infomix.visitor.InformixOutputVisitor;
 import com.alibaba.druid.sql.dialect.mysql.ast.MySqlObject;
 import com.alibaba.druid.sql.dialect.mysql.ast.clause.MySqlSelectIntoStatement;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlInsertStatement;
@@ -70,6 +73,8 @@ import com.alibaba.druid.support.logging.Log;
 import com.alibaba.druid.support.logging.LogFactory;
 import com.alibaba.druid.util.*;
 
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -79,6 +84,8 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 public class SQLUtils {
+    public static final Charset UTF8 = StandardCharsets.UTF_8;
+
     private static final SQLParserFeature[] FORMAT_DEFAULT_FEATURES = {
             SQLParserFeature.KeepComments,
             SQLParserFeature.EnableSQLBinaryOpExprGroup
@@ -378,14 +385,20 @@ public class SQLUtils {
     }
 
     public static String toSQLString(List<SQLStatement> statementList, DbType dbType, List<Object> parameters) {
-        return toSQLString(statementList, dbType, parameters, null, null);
+        return toSQLString(statementList, dbType, parameters, null);
     }
 
-    public static String toSQLString(List<SQLStatement> statementList,
-                                     DbType dbType,
-                                     List<Object> parameters,
-                                     FormatOption option) {
+    public static String toSQLString(
+            List<SQLStatement> statementList,
+            DbType dbType,
+            List<Object> parameters,
+            FormatOption option
+    ) {
         return toSQLString(statementList, dbType, parameters, option, null);
+    }
+
+    public static String toSQLString(List<SQLStatement> statementList, DbType dbType, SQLASTOutputVisitor visitor) {
+        return toSQLString(statementList, dbType, (List<Object>) null, null, visitor);
     }
 
     public static String toSQLString(
@@ -397,14 +410,23 @@ public class SQLUtils {
     ) {
         StringBuilder out = new StringBuilder();
         SQLASTOutputVisitor visitor = createFormatOutputVisitor(out, statementList, dbType);
-        if (parameters != null) {
-            visitor.setInputParameters(parameters);
-        }
-
         if (option == null) {
             option = DEFAULT_FORMAT_OPTION;
         }
         visitor.setFeatures(option.features);
+        return toSQLString(statementList, dbType, parameters, tableMapping, visitor);
+    }
+
+    public static String toSQLString(
+            List<SQLStatement> statementList,
+            DbType dbType,
+            List<Object> parameters,
+            Map<String, String> tableMapping,
+            SQLASTOutputVisitor visitor
+    ) {
+        if (parameters != null) {
+            visitor.setInputParameters(parameters);
+        }
 
         if (tableMapping != null) {
             visitor.setTableMapping(tableMapping);
@@ -471,16 +493,18 @@ public class SQLUtils {
             }
         }
 
-        return out.toString();
+        return visitor.toString();
     }
 
     public static SQLASTOutputVisitor createOutputVisitor(StringBuilder out, DbType dbType) {
         return createFormatOutputVisitor(out, null, dbType);
     }
 
-    public static SQLASTOutputVisitor createFormatOutputVisitor(StringBuilder out,
-                                                                List<SQLStatement> statementList,
-                                                                DbType dbType) {
+    public static SQLASTOutputVisitor createFormatOutputVisitor(
+            StringBuilder out,
+            List<SQLStatement> statementList,
+            DbType dbType
+    ) {
         if (dbType == null) {
             if (statementList != null && statementList.size() > 0) {
                 dbType = statementList.get(0).getDbType();
@@ -506,8 +530,9 @@ public class SQLUtils {
             case postgresql:
             case greenplum:
             case edb:
-            case hologres:
                 return new PGOutputVisitor(out);
+            case hologres:
+                return new HoloOutputVisitor(out);
             case sqlserver:
             case jtds:
                 return new SQLServerOutputVisitor(out);
@@ -517,6 +542,8 @@ public class SQLUtils {
                 return new OdpsOutputVisitor(out);
             case h2:
                 return new H2OutputVisitor(out);
+            case informix:
+                return new InformixOutputVisitor(out);
             case hive:
                 return new HiveOutputVisitor(out);
             case ads:
@@ -526,15 +553,18 @@ public class SQLUtils {
             case spark:
                 return new SparkOutputVisitor(out);
             case presto:
+            case trino:
                 return new PrestoOutputVisitor(out);
             case clickhouse:
-                return new ClickhouseOutputVisitor(out);
+                return new CKOutputVisitor(out);
             case oscar:
                 return new OscarOutputVisitor(out);
             case starrocks:
                 return new StarRocksOutputVisitor(out);
             case bigquery:
                 return new BigQueryOutputVisitor(out);
+            case impala:
+                return new ImpalaOutputVisitor(out);
             default:
                 return new SQLASTOutputVisitor(out, dbType);
         }
@@ -588,7 +618,7 @@ public class SQLUtils {
             case spark:
                 return new SparkSchemaStatVisitor(repository);
             case clickhouse:
-                return new ClickSchemaStatVisitor(repository);
+                return new CKStatVisitor(repository);
             default:
                 return new SchemaStatVisitor(repository);
         }
@@ -662,13 +692,11 @@ public class SQLUtils {
     }
 
     /**
-     * Builds a SQL expression to convert a column's value to a date format based on the provided pattern and database type.
-     *
-     * @param columnName  the name of the column to be converted
-     * @param tableAlias  the alias of the table containing the column (optional)
-     * @param pattern     the date format pattern to be used for the conversion (optional)
-     * @param dbType      the database type for determining the appropriate conversion function
-     * @return a SQL expression representing the converted date value, or an empty string if unable to build the expression
+     * @param columnName
+     * @param tableAlias
+     * @param pattern    if pattern is null,it will be set {%Y-%m-%d %H:%i:%s} as mysql default value and set {yyyy-mm-dd
+     *                   hh24:mi:ss} as oracle default value
+     * @param dbType     {@link DbType} if dbType is null ,it will be set the mysql as a default value
      * @author owenludong.lud
      */
     public static String buildToDate(String columnName, String tableAlias, String pattern, DbType dbType) {
@@ -1775,6 +1803,10 @@ public class SQLUtils {
             features = VisitorFeature.config(features, feature, state);
         }
 
+        public void configTo(SQLASTOutputVisitor v) {
+            v.setFeatures(features);
+        }
+
         public final boolean isEnabled(VisitorFeature feature) {
             return VisitorFeature.isEnabled(this.features, feature);
         }
@@ -1982,6 +2014,18 @@ public class SQLUtils {
         return false;
     }
 
+    public static boolean replaceInParent(SQLDataType expr, SQLDataType target) {
+        SQLObject parent = expr.getParent();
+        if (parent instanceof SQLColumnDefinition) {
+            ((SQLColumnDefinition) parent).setDataType(target);
+        } else if (parent instanceof SQLCastExpr) {
+            ((SQLCastExpr) parent).setDataType(target);
+        } else {
+            return false;
+        }
+        return true;
+    }
+
     public static boolean replaceInParent(SQLExpr expr, SQLExpr target) {
         if (expr == null) {
             return false;
@@ -2059,11 +2103,10 @@ public class SQLUtils {
     }
 
     /**
-     * Sorts the SQL statements in the provided SQL query string based on the specified database type.
+     * 重新排序建表语句，解决建表语句的依赖关系
      *
-     * @param sql    the SQL query string to be sorted
-     * @param dbType the database type for parsing and sorting the SQL statements
-     * @return a sorted SQL query string, or an empty string if the input is invalid
+     * @param sql
+     * @param dbType
      */
     public static String sort(String sql, DbType dbType) {
         List stmtList = SQLUtils.parseStatements(sql, DbType.oracle);
@@ -2072,11 +2115,9 @@ public class SQLUtils {
     }
 
     /**
-     * Clears the LIMIT clause from the provided SQL query and returns the modified query and the extracted LIMIT information.
-     *
-     * @param query  the SQL query string to be modified
-     * @param dbType the database type for parsing the SQL statements
-     * @return an array containing the modified SQL query string and the extracted LIMIT information, or null if no LIMIT clause is found
+     * @param query
+     * @param dbType
+     * @return 0：sql.toString, 1:
      */
     public static Object[] clearLimit(String query, DbType dbType) {
         List stmtList = SQLUtils.parseStatements(query, dbType);

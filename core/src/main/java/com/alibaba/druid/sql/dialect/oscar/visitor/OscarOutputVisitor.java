@@ -183,10 +183,7 @@ public class OscarOutputVisitor extends SQLASTOutputVisitor implements OscarASTV
             x.getFrom().accept(this);
         }
 
-        SQLExpr where = x.getWhere();
-        if (where != null) {
-            printWhere(where);
-        }
+        printWhere(x);
 
         if (x.getGroupBy() != null) {
             println();
@@ -1767,11 +1764,7 @@ public class OscarOutputVisitor extends SQLASTOutputVisitor implements OscarASTV
             print0(ucase ? "MONITORING" : "monitoring");
         }
 
-        if (x.getPartitioning() != null) {
-            println();
-            print0(ucase ? "PARTITION BY " : "partition by ");
-            x.getPartitioning().accept(this);
-        }
+        printPartitionBy(x);
 
         if (x.getCluster() != null) {
             println();

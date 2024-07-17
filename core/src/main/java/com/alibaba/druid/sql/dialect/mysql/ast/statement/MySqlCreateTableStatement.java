@@ -258,11 +258,11 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
     @Override
     public void simplify() {
         tableOptions.clear();
-        tblProperties.clear();
+//        tblProperties.clear();
         super.simplify();
     }
 
-    public void showCoumns(StringBuilder out) throws IOException {
+    public void showColumns(StringBuilder out) throws IOException {
         this.accept(new MySqlShowColumnOutpuVisitor(out));
     }
 
@@ -498,8 +498,8 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
 
     public void cloneTo(MySqlCreateTableStatement x) {
         super.cloneTo(x);
-        if (partitioning != null) {
-            x.setPartitioning(partitioning.clone());
+        if (partitionBy != null) {
+            x.setPartitionBy(partitionBy.clone());
         }
         if (localPartitioning != null) {
             x.setLocalPartitioning(localPartitioning.clone());
@@ -676,15 +676,7 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
     }
 
     public SQLExpr getEngine() {
-        for (SQLAssignItem option : tableOptions) {
-            SQLExpr target = option.getTarget();
-            if (target instanceof SQLIdentifierExpr && ((SQLIdentifierExpr) target).getName()
-                .equalsIgnoreCase("ENGINE")) {
-                return option.getValue();
-            }
-        }
-
-        return null;
+        return getOption("ENGINE");
     }
 
     public void setEngine(SQLExpr x) {

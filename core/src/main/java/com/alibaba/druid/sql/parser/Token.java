@@ -63,6 +63,7 @@ public enum Token {
     UNIQUE("UNIQUE"),
     FOREIGN("FOREIGN"),
     REFERENCES("REFERENCES"),
+    LANGUAGE("LANGUAGE"),
 
     EXPLAIN("EXPLAIN"),
     FOR("FOR"),
@@ -266,6 +267,7 @@ public enum Token {
     LITERAL_HEX,
     LITERAL_CHARS,
     LITERAL_NCHARS,
+    LITERAL_TEXT_BLOCK,
 
     CODE, // odps
 
@@ -286,6 +288,12 @@ public enum Token {
     SORT,
     LATERAL,
 
+    // clickhouse
+    PREWHERE("PREWHERE"),
+    SETTINGS("SETTINGS"),
+    FINAL("FINAL"),
+    TTL("TTL"),
+
     // Teradata
     SEL("SEL"),
     LOCKING("LOCKING"),
@@ -305,7 +313,7 @@ public enum Token {
 
     // StarRocks
     BIGINT("BIGINT"),
-    BITMAP("BITMAP"),
+//    BITMAP("BITMAP"),
 
     LPAREN("("),
     RPAREN(")"),
